@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <title>WeatherWise Chat Bot</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-b from-blue-100 to-blue-300 dark:from-gray-900 dark:to-gray-800 min-h-screen flex flex-col items-center justify-center px-4 py-10">
+  <div class="w-full max-w-xl bg-white dark:bg-gray-900 rounded-3xl shadow-2xl p-6">
+    <h2 class="text-2xl font-bold text-center text-blue-800 dark:text-blue-300 mb-4">
+      🤖 WeatherWise Chat Bot
+    </h2>
+
+    <div id="chatBox" class="space-y-4 h-[400px] overflow-y-auto p-4 bg-blue-50 dark:bg-gray-800 rounded-xl">
+      <!-- Chat messages will appear here -->
+    </div>
+
+    <div class="mt-4 flex gap-2">
+      <input
+        type="text"
+        id="userInput"
+        placeholder="Type your message..."
+        class="flex-1 px-4 py-2 rounded-lg border bg-white-800 dark:border-gray-600"
+        onkeypress="handleKeyPress(event)"
+      />
+      <button onclick="handleUserInput()" class="bg-blue-600 text-white px-4 py-2 rounded-lg">Send</button>
+    </div>
+  </div>
+
+  <script>
+    const apiKey = "d8f9ad01f29975664469a4063f2c71a4";
+    const chatBox = document.getElementById("chatBox");
+    const input = document.getElementById("userInput");
+
+    let step = 1;
+    let userCity = "";
+    let userChoice = "";
+
+    function appendMessage(sender, message) {
+      const msg = document.createElement("div");
+      msg.className = `flex ${sender === "bot" ? "justify-start" : "justify-end"}`;
+
+      const content = document.createElement("div");
+      content.className = `max-w-[80%] px-4 py-2 rounded-2xl shadow ${
+        sender === "bot"
+          ? "bg-white dark:bg-white-700 text-left"
+          : "bg-blue-600 text-white text-right"
+      }`;
+
+      if (typeof message === "string") {
+        content.innerHTML = message;
+      } else {
+        content.appendChild(message);
+      }
+
+      msg.appendChild(content);
+      chatBox.appendChild(msg);
+      chatBox.scrollTop = chatBox.scrollHeight;
+    }
+
+    function botSay(message) {
+      appendMessage("bot", message);
+    }
+
+    function handleKeyPress(event) {
+      if (event.key === "Enter") {
+        handleUserInput();
+      }
+    }
+
+    function handleUserInput() {
+      const userMsg = input.value.trim();
+      if (!userMsg) return;
+
+      appendMessage("user", userMsg);
+      input.value = "";
+
+      if (step === 1) {
+        userCity = userMsg;
+        botSay(`Great! What would you like to know about ${userCity}?`);
+        showMainMenu();
+        step = 2;
+      } else if (step === 2) {
+        chooseOption(userMsg.toLowerCase());
+      }
+    }
+
+    function showMainMenu() {
+      const container = document.createElement("div");
+      container.className = "grid grid-cols-2 gap-2 mt-2";
+
+      const buttons = [
+        { text: "🌡️ Current Weather", choice: "current", color: "bg-blue-500" },
+        { text: "📆 5-Day Forecast", choice: "forecast", color: "bg-blue-500" },
+        { text: "👕 Clothing Recommendations", choice: "clothing", color: "bg-blue-500" },
+        { text: "🚨 Weather Alerts", choice: "alerts", color: "bg-red-500" },
+        { text: "🔁 Change City", action: changeCity, color: "bg-yellow-500" },
+        { text: "🔙 Back to Main Menu", action: goToMainMenu, color: "bg-gray-500" },
+      ];
+
+      buttons.forEach(({ text, choice, action, color }) => {
+        const btn = document.createElement("button");
+        btn.textContent = text;
+        btn.className = `${color} text-white px-2 py-1 rounded`;
+        btn.onclick = action ? action : () => chooseOption(choice);
+        container.appendChild(btn);
+      });
+
+      botSay(container);
+    }
+
+    async function chooseOption(choice) {
+      if (!userCity) {
+        botSay("Please provide a city first.");
+        step = 1;
+        return;
+      }
+
+      if (choice.includes("current")) {
+        botSay(`Fetching current weather for ${userCity}...`);
+        const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${userCity}&appid=${apiKey}&units=metric`);
+        const data = await res.json();
+
+        if (data.cod !== 200) {
+          botSay("⚠️ City not found. Please enter a valid city.");
+          step = 1;
+          return;
+        }
+
+        const { temp, feels_like } = data.main;
+        const { description, icon } = data.weather[0];
+
+        botSay(`<img src="http://openweathermap.org/img/wn/${icon}@2x.png" class="inline-block w-10">
+          The current weather in <b>${data.name}</b> is <b>${description}</b> at <b>${temp}°C</b> (Feels like ${feels_like}°C).`);
+      } else if (choice.includes("forecast")) {
+        botSay(`Getting 5-day forecast for ${userCity}...`);
+        const res = await fetch(`https://api.openweathermap.org/data/2.5/forecast?q=${userCity}&appid=${apiKey}&units=metric`);
+        const data = await res.json();
+
+        if (data.cod !== "200") {
+          botSay("⚠️ Unable to fetch forecast. Check city name.");
+          step = 1;
+          return;
+        }
+
+        const forecasts = data.list.filter((_, i) => i % 8 === 0).slice(0, 5);
+        forecasts.forEach((item) => {
+          const day = new Date(item.dt_txt).toLocaleDateString("en-US", { weekday: "long" });
+          const t = item.main.temp;
+          const d = item.weather[0].description;
+          const icon = item.weather[0].icon;
+          botSay(`<b>${day}</b>: <img src="http://openweathermap.org/img/wn/${icon}@2x.png" class="inline w-8"> ${t}°C, ${d}`);
+        });
+      } else if (choice.includes("clothing")) {
+        botSay(`Checking clothing advice for ${userCity}...`);
+        const res = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${userCity}&appid=${apiKey}&units=metric`);
+        const data = await res.json();
+        const temp = data.main.temp;
+
+        let advice = "";
+        if (temp < 0) advice = "Wear a heavy coat, gloves, and boots. 🧤🧥";
+        else if (temp < 10) advice = "Jacket and scarf are recommended. 🧣";
+        else if (temp < 20) advice = "Light jacket or hoodie is fine. 🧥";
+        else if (temp < 30) advice = "T-shirt weather! 😎";
+        else advice = "Hot day! Stay hydrated and wear light clothes. 🥵";
+
+        botSay(`👕 Based on ${temp}°C, here's the advice: ${advice}`);
+      } else if (choice.includes("alerts")) {
+        botSay(`🚨 Checking for alerts in ${userCity}...`);
+
+        try {
+          const geoRes = await fetch(`https://api.openweathermap.org/data/2.5/weather?q=${userCity}&appid=${apiKey}`);
+          const geoData = await geoRes.json();
+
+          if (geoData.cod !== 200) {
+            botSay("⚠️ City not found. Please enter a valid city.");
+            step = 1;
+            return;
+          }
+
+          const { lat, lon } = geoData.coord;
+          const alertRes = await fetch(`https://api.openweathermap.org/data/3.0/onecall?lat=${lat}&lon=${lon}&appid=${apiKey}`);
+          const alertData = await alertRes.json();
+
+          if (alertData.alerts && alertData.alerts.length > 0) {
+            alertData.alerts.forEach((alert) => {
+              botSay(`🚨 <b>${alert.event}</b><br><i>${alert.description}</i>`);
+            });
+          } else {
+            botSay("✅ No active weather alerts for your area.");
+          }
+        } catch (error) {
+          console.error(error);
+          botSay("⚠️ Couldn't fetch alerts. Please try again later.");
+        }
+      } else {
+        botSay("❓ Please choose a valid option.");
+        showMainMenu();
+      }
+    }
+
+    function changeCity() {
+  step = 3; // New step to handle city input
+  botSay("🌍 Please enter your new city:");
+}
+
+
+    function goToMainMenu() {
+      if (!userCity) {
+        step = 1;
+        botSay("Please enter your city first:");
+      } else {
+        step = 2;
+        botSay(`What would you like to know about ${userCity} again?`);
+        showMainMenu();
+      }
+    }
+
+function handleUserInput() {
+  const userMsg = input.value.trim();
+  if (!userMsg) return;
+
+  appendMessage("user", userMsg);
+  input.value = "";
+
+  if (step === 1) {
+    userCity = userMsg;
+    botSay(`Great! What would you like to know about ${userCity}?`);
+    showMainMenu();
+    step = 2;
+
+  } else if (step === 2) {
+    chooseOption(userMsg.toLowerCase());
+
+  } else if (step === 3) {
+    // Handle city change
+    userCity = userMsg;
+    botSay(`✅ City updated to ${userCity}. What would you like to do next?`);
+    showMainMenu();
+    step = 2;
+  }
+}
+
+
+    // Initial greeting
+    botSay("Hi there! 👋 I'm WeatherWise. What's your city?");
+  </script>
+</body>
+</html>
